@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>trailRiderCrew</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,400;0,600;1,800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#000;--fg:#fff;--mute:#9a9a9a;--line:#2a2a2a;--card:#101010;color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 16px/1.5 'Exo 2','Segoe UI',Arial,sans-serif;padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:inherit}
+:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.app{max-width:480px;margin:0 auto;padding:0 20px 110px}
+.top{padding:14px 0}.mark{display:block;height:26px;width:auto}
+.view{display:none}.view.on{display:block}
+h2{font-style:italic;font-weight:800;font-size:24px;margin:30px 0 12px}
+h3{margin:0;font-size:17px;font-weight:600}
+.logo{display:block;width:100%;max-width:440px;height:auto;margin:16px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:10px}
+.row{display:flex;gap:14px;align-items:center}
+.date{min-width:56px;text-align:center;font-style:italic;font-weight:800;line-height:1}
+.date b{display:block;font-size:34px}.date span{font-size:13px;color:var(--mute);font-style:normal;font-weight:600}
+.next{border-color:#fff}.next .date span{color:#fff}
+p{margin:2px 0 0;color:var(--mute);font-size:14px}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 10px;font-size:12px;color:var(--mute);margin-top:6px}
+.vid{display:flex;gap:14px;align-items:center;padding:10px;text-decoration:none}
+.th{flex:none;width:118px;height:66px;object-fit:cover;border-radius:4px;background:#1a1a1a}
+.note{color:var(--mute);font-size:13px;margin:6px 0 0}
+.map{height:340px;border:1px solid var(--line);border-radius:6px;background:#0b0b0b}
+.leaflet-tile-pane{filter:invert(1) grayscale(1) brightness(.9) contrast(1.15)}
+.leaflet-control-attribution{background:#000c!important;color:var(--mute)!important}
+.leaflet-control-attribution a{color:var(--mute)!important}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.btn{display:inline-block;background:#fff;color:#000;border:0;border-radius:4px;padding:11px 18px;font-weight:800;font-style:italic;text-decoration:none}
+.btn.alt{background:none;color:#fff;border:1px solid #fff}
+label{display:block;margin:14px 0 6px;font-weight:600}
+input,select{width:100%;background:#000;color:#fff;border:1px solid var(--line);border-radius:4px;padding:12px;font:inherit}
+iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;margin-top:12px;background:#111}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#000;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.nav div{max-width:480px;margin:0 auto;display:flex}
+.nav button{flex:1;background:none;border:0;border-top:3px solid transparent;padding:14px 4px;color:var(--mute);font-weight:600}
+.nav button.on{color:#fff;border-top-color:#fff}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:#fff;color:#000;padding:10px 18px;border-radius:999px;font-weight:600;opacity:0;pointer-events:none;transition:.2s}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><img class="mark" src="logo-trc.png" alt="TRC"></div>
+
+  <section class="view on" id="v-start">
+    <img class="logo" src="logo-lockup.png" alt="TRC Landau Pfalz">
+    <p style="font-size:17px;color:var(--fg)">Jeden Samstag um 10 Uhr ein neues Video.</p>
+    <h2>Nächster Termin</h2><div id="next"></div>
+    <h2>Neue Videos</h2><div id="vids"><p>Lädt ...</p></div>
+  </section>
+
+  <section class="view" id="v-termine"><h2>Termine</h2><div id="evList"></div></section>
+
+  <section class="view" id="v-karte">
+    <h2>Trails und Spots</h2>
+    <div class="map" id="map"></div>
+    <div id="det" style="margin-top:12px"></div>
+  </section>
+
+  <section class="view" id="v-admin"><h2>Admin</h2><div id="adm"></div></section>
+</div>
+
+<nav class="nav" aria-label="Hauptmenü"><div>
+  <button class="on" data-v="start">Start</button>
+  <button data-v="termine">Termine</button>
+  <button data-v="karte">Karte</button>
+  <button data-v="admin">Admin</button>
+</div></nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const SB='https://lkaxdsddcdbetrxasqho.supabase.co';
+const KEY='sb_publishable_QzqySmd_2f7o4fF9Zk2zrA_KfLIWy5N';
+const CH='UC8SaeyCryEfl_7vcexUiGNQ';
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+const MON=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+let sess=null;try{sess=JSON.parse(localStorage.getItem('trc_s')||'null')}catch(e){}
+let events=[],spots=[],map,layer,pm,pmark,pos=null,tt;
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2400)}
+function safe(u){try{const x=new URL(u);return x.protocol==='https:'?x.href:null}catch(e){return null}}
+function setSess(j){
+  sess=j?{access_token:j.access_token,refresh_token:j.refresh_token,exp:Date.now()+j.expires_in*1000}:null;
+  try{sess?localStorage.setItem('trc_s',JSON.stringify(sess)):localStorage.removeItem('trc_s')}catch(e){}
+  renderAdmin();renderEvents();showSpot(null);
+}
+async function refresh(){
+  if(!sess||Date.now()<sess.exp-60000)return;
+  const r=await fetch(SB+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:sess.refresh_token})});
+  if(r.ok)setSess(await r.json());else setSess(null);
+}
+async function api(path,method='GET',body){
+  await refresh();
+  const h={apikey:KEY,'Content-Type':'application/json'};
+  if(sess)h.Authorization='Bearer '+sess.access_token;
+  if(method!=='GET')h.Prefer='return=minimal';
+  const r=await fetch(SB+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  if(!r.ok)throw new Error('Fehler '+r.status);
+  return method==='GET'?r.json():null;
+}
+async function login(){
+  const r=await fetch(SB+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('#lE').value.trim(),password:$('#lP').value})});
+  if(!r.ok){toast('Login fehlgeschlagen');return}
+  setSess(await r.json());toast('Eingeloggt');
+}
+
+function show(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  window.scrollTo(0,0);
+  setTimeout(()=>{if(v==='karte'&&map)map.invalidateSize();if(v==='admin'&&pm)pm.invalidateSize()},50);
+}
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+
+function evCard(ev,cls){
+  const [y,m,d]=ev.event_date.split('-');
+  const c=el('div','card row '+cls);
+  const dt=el('div','date');dt.append(el('b',null,String(+d)),el('span',null,MON[+m-1]));
+  const b=el('div');b.style.flex='1';
+  b.append(el('h3',null,ev.title));
+  if(ev.place)b.append(el('p',null,ev.place));
+  b.append(el('span','chip',ev.kind));
+  c.append(dt,b);
+  if(cls==='ev'&&sess){
+    const x=el('button','btn alt','Löschen');
+    x.onclick=async()=>{if(!confirm('Termin löschen?'))return;
+      try{await api('events?id=eq.'+encodeURIComponent(ev.id),'DELETE');toast('Gelöscht');load()}catch(e){toast('Löschen fehlgeschlagen')}};
+    c.append(x);
+  }
+  return c;
+}
+function renderEvents(){
+  const l=$('#evList');
+  l.replaceChildren(...(events.length?events.map(e=>evCard(e,'ev')):[el('p',null,'Noch keine Termine eingetragen.')]));
+  $('#next').replaceChildren(events.length?evCard(events[0],'next'):el('p',null,'Noch kein Termin eingetragen.'));
+}
+
+function komootId(u){const m=(u||'').match(/komoot\.[a-z]+\/(?:[a-z-]+\/)?tour\/(\d+)/i);return m?m[1]:null}
+function showSpot(s){
+  const d=$('#det');d.replaceChildren();
+  if(!s)return;
+  const c=el('div','card');
+  c.append(el('h3',null,s.name));
+  if(s.difficulty)c.append(el('span','chip',s.difficulty));
+  if(s.description)c.append(el('p',null,s.description));
+  const bt=el('div','btns');
+  const k=safe(s.komoot_url),v=safe(s.video_url);
+  if(k){const a=el('a','btn','In Komoot öffnen');a.href=k;a.target='_blank';a.rel='noopener';bt.append(a)}
+  if(v){const a=el('a','btn alt','Video ansehen');a.href=v;a.target='_blank';a.rel='noopener';bt.append(a)}
+  if(sess){const x=el('button','btn alt','Spot löschen');
+    x.onclick=async()=>{if(!confirm('Spot löschen?'))return;
+      try{await api('spots?id=eq.'+encodeURIComponent(s.id),'DELETE');toast('Gelöscht');load()}catch(e){toast('Löschen fehlgeschlagen')}};bt.append(x)}
+  c.append(bt);
+  const id=komootId(k);
+  if(id){
+    let src='https://www.komoot.com/tour/'+id+'/embed?profile=1';
+    try{const t=new URL(k).searchParams.get('share_token');if(t)src+='&share_token='+encodeURIComponent(t)}catch(e){}
+    const f=el('iframe');f.src=src;f.title='Tour '+s.name;f.loading='lazy';
+    f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups');c.append(f);
+  }
+  d.append(c);
+}
+function mkMap(id){
+  const m=L.map(id).setView([49.2,8.12],11);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+  return m;
+}
+function renderSpots(){
+  if(!map){map=mkMap('map');layer=L.layerGroup().addTo(map)}
+  layer.clearLayers();
+  spots.forEach(s=>{
+    const m=L.circleMarker([s.lat,s.lng],{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(layer);
+    m.bindTooltip(s.name);m.on('click',()=>showSpot(s));
+  });
+  if(spots.length)map.fitBounds(L.latLngBounds(spots.map(s=>[s.lat,s.lng])).pad(.3),{maxZoom:14});
+}
+
+function fmt(p){const d=(p||'').slice(0,10).split('-');return d.length===3?d[2]+'.'+d[1]+'.'+d[0]:''}
+async function videos(){
+  const box=$('#vids');
+  try{
+    const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent('https://www.youtube.com/feeds/videos.xml?channel_id='+CH));
+    const j=await r.json();if(j.status!=='ok')throw 0;
+    box.replaceChildren(...j.items.slice(0,6).map(v=>{
+      const id=((v.link||'').match(/v=([\w-]{11})/)||[])[1]||(v.guid||'').replace('yt:video:','');
+      const a=el('a','card vid');a.href='https://www.youtube.com/watch?v='+encodeURIComponent(id);a.target='_blank';a.rel='noopener';
+      const im=el('img','th');im.src='https://i.ytimg.com/vi/'+encodeURIComponent(id)+'/mqdefault.jpg';im.alt='';im.loading='lazy';
+      const d=el('div');d.append(el('h3',null,v.title),el('p',null,fmt(v.pubDate)));
+      a.append(im,d);return a;
+    }));
+  }catch(e){
+    const a=el('a','btn','Kanal auf YouTube öffnen');a.href='https://www.youtube.com/@trailridercrew-trc';a.target='_blank';a.rel='noopener';
+    box.replaceChildren(a);
+  }
+}
+
+function renderAdmin(){
+  const b=$('#adm');b.replaceChildren();
+  if(pm){pm.remove();pm=null;pmark=null;pos=null}
+  if(!sess){
+    b.innerHTML='<div class="card"><label for="lE">E-Mail</label><input id="lE" type="email" autocomplete="username"><label for="lP">Passwort</label><input id="lP" type="password" autocomplete="current-password"><div class="btns"><button class="btn" id="lB">Einloggen</button></div></div><p class="note">Dieser Bereich ist nur für die Admins der Crew.</p>';
+    $('#lB').onclick=login;return;
+  }
+  b.innerHTML=`<div class="card"><h3>Termin eintragen</h3>
+<label for="eT">Titel</label><input id="eT">
+<label for="eD">Datum</label><input id="eD" type="date">
+<label for="eP">Treffpunkt</label><input id="eP">
+<label for="eK">Art</label><select id="eK"><option>Ausfahrt</option><option>Trailbau</option><option>Sonstiges</option></select>
+<div class="btns"><button class="btn" id="eB">Termin speichern</button></div></div>
+<div class="card"><h3>Spot eintragen</h3>
+<label for="sN">Name</label><input id="sN">
+<label for="sD">Beschreibung</label><input id="sD">
+<label for="sL">Schwierigkeit</label><select id="sL"><option>leicht</option><option>mittel</option><option>schwer</option></select>
+<label for="sK">Komoot-Link der Tour</label><input id="sK" type="url" placeholder="https://www.komoot.com/tour/...">
+<label for="sV">Video-Link (optional)</label><input id="sV" type="url" placeholder="https://www.youtube.com/watch?v=...">
+<label>Position: auf die Karte tippen</label><div id="pm" class="map" style="height:260px"></div>
+<p class="note" id="pc">Noch keine Position gewählt.</p>
+<div class="btns"><button class="btn" id="sB">Spot speichern</button></div></div>
+<div class="btns"><button class="btn alt" id="lo">Ausloggen</button></div>`;
+  pm=mkMap('pm');
+  pm.on('click',e=>{
+    pos=e.latlng;if(pmark)pmark.setLatLng(pos);else pmark=L.circleMarker(pos,{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(pm);
+    $('#pc').textContent='Position gewählt: '+pos.lat.toFixed(5)+', '+pos.lng.toFixed(5);
+  });
+  $('#eB').onclick=async()=>{
+    const t=$('#eT').value.trim(),d=$('#eD').value;
+    if(!t||!d){toast('Bitte Titel und Datum ausfüllen');return}
+    try{await api('events','POST',{title:t,event_date:d,place:$('#eP').value.trim()||null,kind:$('#eK').value});
+      toast('Termin gespeichert');['#eT','#eD','#eP'].forEach(s=>$(s).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
+  };
+  $('#sB').onclick=async()=>{
+    const n=$('#sN').value.trim();
+    if(!n||!pos){toast('Bitte Name und Position wählen');return}
+    const k=$('#sK').value.trim(),v=$('#sV').value.trim();
+    if((k&&!safe(k))||(v&&!safe(v))){toast('Links müssen mit https:// beginnen');return}
+    try{await api('spots','POST',{name:n,description:$('#sD').value.trim()||null,lat:pos.lat,lng:pos.lng,difficulty:$('#sL').value,komoot_url:k||null,video_url:v||null});
+      toast('Spot gespeichert');load()}catch(e){toast('Speichern fehlgeschlagen')}
+  };
+  $('#lo').onclick=()=>{setSess(null);toast('Ausgeloggt')};
+}
+
+async function load(){
+  try{
+    events=await api('events?select=*&order=event_date.asc&event_date=gte.'+new Date().toLocaleDateString('sv-SE'));
+    spots=await api('spots?select=*&order=name.asc');
+  }catch(e){toast('Daten konnten nicht geladen werden')}
+  renderEvents();renderSpots();
+}
+renderAdmin();load();videos();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
