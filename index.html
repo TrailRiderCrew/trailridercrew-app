@@ -36,7 +36,8 @@ p{margin:2px 0 0;color:var(--mute);font-size:14px}
 .th{flex:none;width:118px;height:66px;object-fit:cover;border-radius:4px;background:#1a1a1a}
 .note{color:var(--mute);font-size:13px;margin:6px 0 0}
 .map{height:340px;border:1px solid var(--line);border-radius:6px;background:#0b0b0b}
-.leaflet-tile-pane{filter:invert(1) grayscale(1) brightness(.9) contrast(1.15)}
+.dark-tiles{filter:invert(1) grayscale(1) brightness(.9) contrast(1.15)}
+.leaflet-control-layers{font-family:inherit;color:#000}
 .leaflet-control-attribution{background:#000c!important;color:var(--mute)!important}
 .leaflet-control-attribution a{color:var(--mute)!important}
 .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -191,17 +192,28 @@ function showSpot(s){
 }
 function mkMap(id){
   const m=L.map(id).setView([49.2,8.12],11);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
+  const at='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  const base={
+    'Farbig':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:at}),
+    'Topo (Höhenlinien)':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:at+', SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a>'}),
+    'Dunkel':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:at,className:'dark-tiles'})
+  };
+  let sel='Farbig';try{sel=localStorage.getItem('trc_map')||sel}catch(e){}
+  if(!base[sel])sel='Farbig';
+  base[sel].addTo(m);
+  L.control.layers(base,null,{collapsed:false}).addTo(m);
+  m.on('baselayerchange',e=>{try{localStorage.setItem('trc_map',e.name)}catch(err){}});
   return m;
 }
 function route(s){const r=s.route;return Array.isArray(r)&&r.length>1&&r.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?r:null}
 function rKm(r){let d=0;const p=Math.PI/180;for(let i=1;i<r.length;i++){const a=r[i-1],b=r[i],x=Math.sin((b[0]-a[0])*p/2),y=Math.sin((b[1]-a[1])*p/2);d+=12742*Math.asin(Math.sqrt(x*x+Math.cos(a[0]*p)*Math.cos(b[0]*p)*y*y))}return d}
+const routeLayers=r=>[L.polyline(r,{color:'#fff',weight:8,opacity:.9}),L.polyline(r,{color:'#ff3b00',weight:4})];
 function renderSpots(){
   if(!map){map=mkMap('map');layer=L.layerGroup().addTo(map)}
   layer.clearLayers();const pts=[];
   spots.forEach(s=>{
     const r=route(s),go=()=>{showSpot(s);if(r)map.fitBounds(L.latLngBounds(r).pad(.2))};
-    if(r){const l=L.polyline(r,{color:'#fff',weight:4,opacity:.95}).addTo(layer);l.bindTooltip(s.name);l.on('click',go);pts.push(...r)}
+    if(r){const g=L.featureGroup(routeLayers(r)).addTo(layer);g.bindTooltip(s.name);g.on('click',go);pts.push(...r)}
     const m=L.circleMarker([s.lat,s.lng],{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(layer);
     m.bindTooltip(s.name);m.on('click',go);pts.push([s.lat,s.lng]);
   });
@@ -259,7 +271,7 @@ function renderAdmin(){
   pm=mkMap('pm');
   const draw=()=>{
     if(rline){pm.removeLayer(rline);rline=null}
-    if(rt.length>1)rline=L.polyline(rt,{color:'#fff',weight:4}).addTo(pm);
+    if(rt.length>1)rline=L.featureGroup(routeLayers(rt)).addTo(pm);
     if(pos){if(pmark)pmark.setLatLng(pos);else pmark=L.circleMarker(pos,{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(pm)}
     else if(pmark){pm.removeLayer(pmark);pmark=null}
     $('#pc').textContent=rt.length>1?'Strecke mit '+rt.length+' Punkten, '+rKm(rt).toFixed(1).replace('.',',')+' km':pos?'Position gewählt: '+pos.lat.toFixed(5)+', '+pos.lng.toFixed(5):'Noch keine Position gewählt.';
