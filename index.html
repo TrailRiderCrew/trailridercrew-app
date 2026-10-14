@@ -47,6 +47,12 @@ iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;ma
 .two{display:flex;gap:12px}.two>div{flex:1}
 textarea{resize:vertical}
 .desc{color:#d0d0d0;margin-top:8px;white-space:pre-line}
+.ov{position:fixed;inset:0;z-index:3000;background:#000;overflow-y:auto;display:none;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.ov.on{display:block}
+.ov .app{padding-top:14px}
+button.chip{background:none;cursor:pointer;font:inherit;font-size:12px}
+.nav{z-index:2000}.toast{z-index:4000}.map{isolation:isolate}
+.card[role=button]{cursor:pointer}
 .player{aspect-ratio:16/9;margin-bottom:12px}
 .player iframe{height:100%;margin:0}
 .nav{position:fixed;left:0;right:0;bottom:0;background:#000;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -71,7 +77,7 @@ textarea{resize:vertical}
     <div id="vids"><p>Lädt ...</p></div>
   </section>
 
-  <section class="view" id="v-termine"><h2>Termine</h2><div id="evList"></div></section>
+  <section class="view" id="v-termine"><h2>Termine</h2><p class="note" style="margin-bottom:12px">Tippe auf einen Termin für Details, Zu- und Absage und Kommentare.</p><div id="evList"></div></section>
 
   <section class="view" id="v-karte">
     <h2>Trails und Spots</h2>
@@ -82,6 +88,7 @@ textarea{resize:vertical}
   <section class="view" id="v-admin"><h2>Admin</h2><div id="adm"></div></section>
 </div>
 
+<div class="ov" id="ov" role="dialog" aria-modal="true" aria-label="Termin"><div class="app"><button class="btn alt" id="ovb">Zurück</button><div id="ovc"></div></div></div>
 <nav class="nav" aria-label="Hauptmenü"><div>
   <button class="on" data-v="start">Start</button>
   <button data-v="termine">Termine</button>
@@ -99,7 +106,7 @@ const $=s=>document.querySelector(s);
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const MON=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 let sess=null;try{sess=JSON.parse(localStorage.getItem('trc_s')||'null')}catch(e){}
-let events=[],spots=[],map,layer,pm,pmark,pos=null,rt=[],rline=null,tt;
+let events=[],spots=[],map,layer,pm,pmark,pos=null,rt=[],rline=null,em,emark,epos=null,ovMap=null,tt;
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2400)}
 function safe(u){try{const x=new URL(u);return x.protocol==='https:'?x.href:null}catch(e){return null}}
@@ -132,7 +139,7 @@ function show(v){
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
   window.scrollTo(0,0);
-  setTimeout(()=>{if(v==='karte'&&map)map.invalidateSize();if(v==='admin'&&pm)pm.invalidateSize()},50);
+  setTimeout(()=>{if(v==='karte'&&map)map.invalidateSize();if(v==='admin'){if(pm)pm.invalidateSize();if(em)em.invalidateSize()}},50);
 }
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 
@@ -148,9 +155,11 @@ function evCard(ev,cls){
   if(ev.description)b.append(el('p','desc',ev.description));
   b.append(el('span','chip',ev.kind));
   c.append(dt,b);
+  c.tabIndex=0;c.setAttribute('role','button');c.onclick=()=>openEvent(ev);
+  c.onkeydown=e=>{if(e.key==='Enter'){openEvent(ev)}};
   if(cls==='ev'&&sess){
     const x=el('button','btn alt','Löschen');
-    x.onclick=async()=>{if(!confirm('Termin löschen?'))return;
+    x.onclick=async e=>{e.stopPropagation();if(!confirm('Termin löschen?'))return;
       try{await api('events?id=eq.'+encodeURIComponent(ev.id),'DELETE');toast('Gelöscht');load()}catch(e){toast('Löschen fehlgeschlagen')}};
     c.append(x);
   }
@@ -208,6 +217,113 @@ function renderSpots(){
   if(pts.length)map.fitBounds(L.latLngBounds(pts).pad(.3),{maxZoom:14});
 }
 
+function getName(){try{return localStorage.getItem('trc_name')||''}catch(e){return ''}}
+function fmtTs(t){try{return new Date(t).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return ''}}
+function openEvent(ev){
+  const o=$('#ov');o.classList.add('on');o.scrollTop=0;document.body.style.overflow='hidden';
+  history.pushState({o:1},'');renderEvent(ev);
+}
+function closeEvent(){
+  $('#ov').classList.remove('on');document.body.style.overflow='';
+  if(ovMap){ovMap.remove();ovMap=null}
+}
+window.addEventListener('popstate',closeEvent);
+$('#ovb').onclick=()=>history.back();
+async function renderEvent(ev){
+  const c=$('#ovc');c.replaceChildren();
+  if(ovMap){ovMap.remove();ovMap=null}
+  const [y,m,d]=ev.event_date.split('-');
+  c.append(el('h2',null,ev.title));
+  const meta=el('p',null,[(+d)+'. '+MON[+m-1]+' '+y,timeTxt(ev)].filter(Boolean).join(', '));
+  meta.style.cssText='font-size:17px;color:#fff';c.append(meta);
+  if(ev.place)c.append(el('p',null,ev.place));
+  c.append(el('span','chip',ev.kind));
+  if(ev.description)c.append(el('p','desc',ev.description));
+  if(ev.lat!=null&&ev.lng!=null&&isFinite(ev.lat)&&isFinite(ev.lng)){
+    const md=el('div','map');md.id='ovm';md.style.marginTop='16px';c.append(md);
+    ovMap=mkMap('ovm');ovMap.setView([ev.lat,ev.lng],15);
+    L.circleMarker([ev.lat,ev.lng],{radius:11,color:'#000',weight:3,fillColor:'#ff3b00',fillOpacity:1}).addTo(ovMap);
+    setTimeout(()=>{if(ovMap)ovMap.invalidateSize()},60);
+    const bt=el('div','btns');
+    const a1=el('a','btn','In Google Maps öffnen');a1.href='https://www.google.com/maps/search/?api=1&query='+ev.lat+','+ev.lng;
+    const a2=el('a','btn alt','Route planen');a2.href='https://www.google.com/maps/dir/?api=1&destination='+ev.lat+','+ev.lng;
+    [a1,a2].forEach(a=>{a.target='_blank';a.rel='noopener'});bt.append(a1,a2);c.append(bt);
+  }
+  const box=el('div');c.append(box);
+  await loadSocial(ev,box);
+}
+async function loadSocial(ev,box){
+  let rs,cs;
+  try{
+    rs=await api('rsvps?select=id,name,status,created_at&order=created_at.asc&event_id=eq.'+encodeURIComponent(ev.id));
+    cs=await api('comments?select=id,name,body,created_at&order=created_at.asc&event_id=eq.'+encodeURIComponent(ev.id));
+  }catch(e){box.replaceChildren(el('p',null,'Zu- und Absagen sowie Kommentare konnten nicht geladen werden.'));return}
+  const cur=new Map(),ids={};
+  rs.forEach(r=>{const k=r.name.trim().toLowerCase();cur.set(k,r);(ids[k]=ids[k]||[]).push(r.id)});
+  const all=[...cur.entries()];
+  const prevName=$('#rn')?$('#rn').value:getName(),prevC=$('#rc')?$('#rc').value:'';
+  box.replaceChildren();
+  box.append(el('h2',null,'Kommst du?'));
+  const card=el('div','card');
+  const lb=el('label',null,'Dein Name');lb.setAttribute('for','rn');
+  const inp=el('input');inp.id='rn';inp.maxLength=40;inp.value=prevName;inp.autocomplete='nickname';
+  card.append(lb,inp);
+  const mine=cur.get((prevName||'').trim().toLowerCase());
+  if(mine)card.append(el('p',null,'Deine Antwort: '+(mine.status==='yes'?'Zugesagt':'Abgesagt')));
+  const bt=el('div','btns');
+  const send=async st=>{
+    const n=inp.value.trim();if(!n){toast('Bitte gib deinen Namen ein');return}
+    try{await api('rsvps','POST',{event_id:ev.id,name:n,status:st});
+      try{localStorage.setItem('trc_name',n)}catch(e){}
+      toast(st==='yes'?'Zusage gespeichert':'Absage gespeichert');loadSocial(ev,box)}
+    catch(e){toast('Das hat nicht geklappt')}
+  };
+  const yb=el('button','btn','Zusagen'),nb=el('button','btn alt','Absagen');
+  yb.onclick=()=>send('yes');nb.onclick=()=>send('no');bt.append(yb,nb);card.append(bt);box.append(card);
+  [['yes','Zugesagt'],['no','Abgesagt']].forEach(([st,lab])=>{
+    const list=all.filter(([k,r])=>r.status===st);
+    const c2=el('div','card');c2.append(el('h3',null,lab+' ('+list.length+')'));
+    const w=el('div');w.style.marginTop='6px';
+    list.forEach(([k,r])=>{
+      const ch=el(sess?'button':'span','chip',r.name+(sess?' ×':''));ch.style.marginRight='6px';
+      if(sess)ch.onclick=async()=>{
+        if(!confirm(r.name+' entfernen?'))return;
+        try{await api('rsvps?id=in.('+ids[k].join(',')+')','DELETE');loadSocial(ev,box)}catch(e){toast('Löschen fehlgeschlagen')}
+      };
+      w.append(ch);
+    });
+    if(!list.length)w.append(el('p',null,'Noch niemand.'));
+    c2.append(w);box.append(c2);
+  });
+  box.append(el('h2',null,'Kommentare ('+cs.length+')'));
+  cs.forEach(cm=>{
+    const cd=el('div','card');
+    cd.append(el('h3',null,cm.name),el('p',null,fmtTs(cm.created_at)),el('p','desc',cm.body));
+    if(sess){
+      const x=el('button','btn alt','Löschen');x.style.marginTop='10px';
+      x.onclick=async()=>{
+        if(!confirm('Kommentar löschen?'))return;
+        try{await api('comments?id=eq.'+encodeURIComponent(cm.id),'DELETE');loadSocial(ev,box)}catch(e){toast('Löschen fehlgeschlagen')}
+      };
+      cd.append(x);
+    }
+    box.append(cd);
+  });
+  if(!cs.length)box.append(el('p',null,'Noch keine Kommentare.'));
+  const cf=el('div','card');
+  const tl=el('label',null,'Dein Kommentar');tl.setAttribute('for','rc');
+  const ta=el('textarea');ta.id='rc';ta.rows=3;ta.maxLength=500;ta.value=prevC;
+  const cb=el('button','btn','Kommentar senden');cb.style.marginTop='12px';
+  cb.onclick=async()=>{
+    const n=inp.value.trim(),t=ta.value.trim();
+    if(!n||!t){toast('Bitte Name und Kommentar ausfüllen');return}
+    try{await api('comments','POST',{event_id:ev.id,name:n,body:t});
+      try{localStorage.setItem('trc_name',n)}catch(e){}
+      ta.value='';toast('Kommentar gesendet');loadSocial(ev,box)}
+    catch(e){toast('Das hat nicht geklappt')}
+  };
+  cf.append(tl,ta,cb);box.append(cf);
+}
 function fmt(p){const d=(p||'').slice(0,10).split('-');return d.length===3?d[2]+'.'+d[1]+'.'+d[0]:''}
 async function videos(){
   const box=$('#vids');
@@ -231,6 +347,7 @@ async function videos(){
 function renderAdmin(){
   const b=$('#adm');b.replaceChildren();
   if(pm){pm.remove();pm=null;pmark=null;pos=null;rt=[];rline=null}
+  if(em){em.remove();em=null;emark=null;epos=null}
   if(!sess){
     b.innerHTML='<div class="card"><label for="lE">E-Mail</label><input id="lE" type="email" autocomplete="username"><label for="lP">Passwort</label><input id="lP" type="password" autocomplete="current-password"><div class="btns"><button class="btn" id="lB">Einloggen</button></div></div><p class="note">Dieser Bereich ist nur für die Admins der Crew.</p>';
     $('#lB').onclick=login;return;
@@ -239,7 +356,10 @@ function renderAdmin(){
 <label for="eT">Titel</label><input id="eT">
 <label for="eD">Datum</label><input id="eD" type="date">
 <div class="two"><div><label for="eS">Start</label><input id="eS" type="time"></div><div><label for="eE">Ende</label><input id="eE" type="time"></div></div>
-<label for="eP">Treffpunkt</label><input id="eP">
+<label for="eP">Treffpunkt (Text)</label><input id="eP">
+<label>Treffpunkt auf der Karte (optional)</label><div id="em" class="map" style="height:220px"></div>
+<p class="note" id="eN">Tippe auf die Karte, um den Treffpunkt zu markieren.</p>
+<div class="btns"><button class="btn alt" id="eR">Markierung entfernen</button></div>
 <label for="eX">Beschreibung</label><textarea id="eX" rows="3" placeholder="z. B. Was ist mitzubringen? Wie lange? Für wen?"></textarea>
 <label for="eK">Art</label><select id="eK"><option>Ausfahrt</option><option>Trailbau</option><option>Sonstiges</option></select>
 <div class="btns"><button class="btn" id="eB">Termin speichern</button></div></div>
@@ -256,6 +376,13 @@ function renderAdmin(){
 <label for="sG">Oder GPX-Datei laden (optional)</label><input id="sG" type="file" accept=".gpx">
 <div class="btns"><button class="btn" id="sB">Spot speichern</button></div></div>
 <div class="btns"><button class="btn alt" id="lo">Ausloggen</button></div>`;
+  em=mkMap('em');
+  em.on('click',e=>{
+    epos=e.latlng;
+    if(emark)emark.setLatLng(epos);else emark=L.circleMarker(epos,{radius:10,color:'#000',weight:3,fillColor:'#ff3b00',fillOpacity:1}).addTo(em);
+    $('#eN').textContent='Treffpunkt gewählt: '+epos.lat.toFixed(5)+', '+epos.lng.toFixed(5);
+  });
+  $('#eR').onclick=()=>{epos=null;if(emark){em.removeLayer(emark);emark=null}$('#eN').textContent='Tippe auf die Karte, um den Treffpunkt zu markieren.'};
   pm=mkMap('pm');
   const draw=()=>{
     if(rline){pm.removeLayer(rline);rline=null}
@@ -287,8 +414,8 @@ function renderAdmin(){
     if(!t||!d){toast('Bitte Titel und Datum ausfüllen');return}
     const s=$('#eS').value,n=$('#eE').value;
     if(s&&n&&n<=s){toast('Das Ende muss nach dem Start liegen');return}
-    try{await api('events','POST',{title:t,event_date:d,start_time:s||null,end_time:n||null,place:$('#eP').value.trim()||null,description:$('#eX').value.trim()||null,kind:$('#eK').value});
-      toast('Termin gespeichert');['#eT','#eD','#eS','#eE','#eP','#eX'].forEach(x=>$(x).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
+    try{await api('events','POST',{title:t,event_date:d,start_time:s||null,end_time:n||null,place:$('#eP').value.trim()||null,description:$('#eX').value.trim()||null,lat:epos?epos.lat:null,lng:epos?epos.lng:null,kind:$('#eK').value});
+      toast('Termin gespeichert');$('#eR').click();['#eT','#eD','#eS','#eE','#eP','#eX'].forEach(x=>$(x).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
   };
   $('#sB').onclick=async()=>{
     const n=$('#sN').value.trim();
