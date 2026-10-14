@@ -36,8 +36,6 @@ p{margin:2px 0 0;color:var(--mute);font-size:14px}
 .th{flex:none;width:118px;height:66px;object-fit:cover;border-radius:4px;background:#1a1a1a}
 .note{color:var(--mute);font-size:13px;margin:6px 0 0}
 .map{height:340px;border:1px solid var(--line);border-radius:6px;background:#0b0b0b}
-.dark-tiles{filter:invert(1) grayscale(1) brightness(.9) contrast(1.15)}
-.leaflet-control-layers{font-family:inherit;color:#000}
 .leaflet-control-attribution{background:#000c!important;color:var(--mute)!important}
 .leaflet-control-attribution a{color:var(--mute)!important}
 .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -192,17 +190,7 @@ function showSpot(s){
 }
 function mkMap(id){
   const m=L.map(id).setView([49.2,8.12],11);
-  const at='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  const base={
-    'Farbig':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:at}),
-    'Topo (Höhenlinien)':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:at+', SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a>'}),
-    'Dunkel':L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:at,className:'dark-tiles'})
-  };
-  let sel='Farbig';try{sel=localStorage.getItem('trc_map')||sel}catch(e){}
-  if(!base[sel])sel='Farbig';
-  base[sel].addTo(m);
-  L.control.layers(base,null,{collapsed:false}).addTo(m);
-  m.on('baselayerchange',e=>{try{localStorage.setItem('trc_map',e.name)}catch(err){}});
+  L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | © <a href="https://opentopomap.org">OpenTopoMap</a>'}).addTo(m);
   return m;
 }
 function route(s){const r=s.route;return Array.isArray(r)&&r.length>1&&r.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?r:null}
