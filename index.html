@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>trailRiderCrew</title>
+<title>TrailRiderCrew</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
@@ -43,8 +43,13 @@ p{margin:2px 0 0;color:var(--mute);font-size:14px}
 .btn{display:inline-block;background:#fff;color:#000;border:0;border-radius:4px;padding:11px 18px;font-weight:800;font-style:italic;text-decoration:none}
 .btn.alt{background:none;color:#fff;border:1px solid #fff}
 label{display:block;margin:14px 0 6px;font-weight:600}
-input,select{width:100%;background:#000;color:#fff;border:1px solid var(--line);border-radius:4px;padding:12px;font:inherit}
+input,select,textarea{width:100%;background:#000;color:#fff;border:1px solid var(--line);border-radius:4px;padding:12px;font:inherit}
 iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;margin-top:12px;background:#111}
+.two{display:flex;gap:12px}.two>div{flex:1}
+textarea{resize:vertical}
+.desc{color:#d0d0d0;margin-top:8px;white-space:pre-line}
+.player{aspect-ratio:16/9;margin-bottom:12px}
+.player iframe{height:100%;margin:0}
 .nav{position:fixed;left:0;right:0;bottom:0;background:#000;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 .nav div{max-width:480px;margin:0 auto;display:flex}
 .nav button{flex:1;background:none;border:0;border-top:3px solid transparent;padding:14px 4px;color:var(--mute);font-weight:600}
@@ -62,7 +67,9 @@ iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:6px;ma
     <img class="logo" src="logo-lockup.png" alt="TRC Landau Pfalz">
     <p style="font-size:17px;color:var(--fg)">Jeden Samstag um 10 Uhr ein neues Video.</p>
     <h2>Nächster Termin</h2><div id="next"></div>
-    <h2>Neue Videos</h2><div id="vids"><p>Lädt ...</p></div>
+    <h2>Neue Videos</h2>
+    <div class="player"><iframe id="yt" title="TrailRiderCrew Videos" src="https://www.youtube-nocookie.com/embed/videoseries?list=UU8SaeyCryEfl_7vcexUiGNQ" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+    <div id="vids"><p>Lädt ...</p></div>
   </section>
 
   <section class="view" id="v-termine"><h2>Termine</h2><div id="evList"></div></section>
@@ -93,7 +100,7 @@ const $=s=>document.querySelector(s);
 const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
 const MON=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 let sess=null;try{sess=JSON.parse(localStorage.getItem('trc_s')||'null')}catch(e){}
-let events=[],spots=[],map,layer,pm,pmark,pos=null,tt;
+let events=[],spots=[],map,layer,pm,pmark,pos=null,rt=[],rline=null,tt;
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2400)}
 function safe(u){try{const x=new URL(u);return x.protocol==='https:'?x.href:null}catch(e){return null}}
@@ -130,13 +137,16 @@ function show(v){
 }
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
 
+function timeTxt(e){const s=(e.start_time||'').slice(0,5),n=(e.end_time||'').slice(0,5);return s&&n?s+' bis '+n+' Uhr':s?'ab '+s+' Uhr':''}
 function evCard(ev,cls){
   const [y,m,d]=ev.event_date.split('-');
   const c=el('div','card row '+cls);
   const dt=el('div','date');dt.append(el('b',null,String(+d)),el('span',null,MON[+m-1]));
   const b=el('div');b.style.flex='1';
   b.append(el('h3',null,ev.title));
+  const tm=timeTxt(ev);if(tm)b.append(el('p',null,tm));
   if(ev.place)b.append(el('p',null,ev.place));
+  if(ev.description)b.append(el('p','desc',ev.description));
   b.append(el('span','chip',ev.kind));
   c.append(dt,b);
   if(cls==='ev'&&sess){
@@ -161,6 +171,7 @@ function showSpot(s){
   c.append(el('h3',null,s.name));
   if(s.difficulty)c.append(el('span','chip',s.difficulty));
   if(s.description)c.append(el('p',null,s.description));
+  const rr=route(s);if(rr)c.append(el('p',null,'Strecke: '+rKm(rr).toFixed(1).replace('.',',')+' km'));
   const bt=el('div','btns');
   const k=safe(s.komoot_url),v=safe(s.video_url);
   if(k){const a=el('a','btn','In Komoot öffnen');a.href=k;a.target='_blank';a.rel='noopener';bt.append(a)}
@@ -183,14 +194,18 @@ function mkMap(id){
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);
   return m;
 }
+function route(s){const r=s.route;return Array.isArray(r)&&r.length>1&&r.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?r:null}
+function rKm(r){let d=0;const p=Math.PI/180;for(let i=1;i<r.length;i++){const a=r[i-1],b=r[i],x=Math.sin((b[0]-a[0])*p/2),y=Math.sin((b[1]-a[1])*p/2);d+=12742*Math.asin(Math.sqrt(x*x+Math.cos(a[0]*p)*Math.cos(b[0]*p)*y*y))}return d}
 function renderSpots(){
   if(!map){map=mkMap('map');layer=L.layerGroup().addTo(map)}
-  layer.clearLayers();
+  layer.clearLayers();const pts=[];
   spots.forEach(s=>{
+    const r=route(s),go=()=>{showSpot(s);if(r)map.fitBounds(L.latLngBounds(r).pad(.2))};
+    if(r){const l=L.polyline(r,{color:'#fff',weight:4,opacity:.95}).addTo(layer);l.bindTooltip(s.name);l.on('click',go);pts.push(...r)}
     const m=L.circleMarker([s.lat,s.lng],{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(layer);
-    m.bindTooltip(s.name);m.on('click',()=>showSpot(s));
+    m.bindTooltip(s.name);m.on('click',go);pts.push([s.lat,s.lng]);
   });
-  if(spots.length)map.fitBounds(L.latLngBounds(spots.map(s=>[s.lat,s.lng])).pad(.3),{maxZoom:14});
+  if(pts.length)map.fitBounds(L.latLngBounds(pts).pad(.3),{maxZoom:14});
 }
 
 function fmt(p){const d=(p||'').slice(0,10).split('-');return d.length===3?d[2]+'.'+d[1]+'.'+d[0]:''}
@@ -202,6 +217,7 @@ async function videos(){
     box.replaceChildren(...j.items.slice(0,6).map(v=>{
       const id=((v.link||'').match(/v=([\w-]{11})/)||[])[1]||(v.guid||'').replace('yt:video:','');
       const a=el('a','card vid');a.href='https://www.youtube.com/watch?v='+encodeURIComponent(id);a.target='_blank';a.rel='noopener';
+      a.onclick=e=>{e.preventDefault();$('#yt').src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(id)+'?autoplay=1&rel=0';$('.player').scrollIntoView({behavior:'smooth',block:'center'})};
       const im=el('img','th');im.src='https://i.ytimg.com/vi/'+encodeURIComponent(id)+'/mqdefault.jpg';im.alt='';im.loading='lazy';
       const d=el('div');d.append(el('h3',null,v.title),el('p',null,fmt(v.pubDate)));
       a.append(im,d);return a;
@@ -214,7 +230,7 @@ async function videos(){
 
 function renderAdmin(){
   const b=$('#adm');b.replaceChildren();
-  if(pm){pm.remove();pm=null;pmark=null;pos=null}
+  if(pm){pm.remove();pm=null;pmark=null;pos=null;rt=[];rline=null}
   if(!sess){
     b.innerHTML='<div class="card"><label for="lE">E-Mail</label><input id="lE" type="email" autocomplete="username"><label for="lP">Passwort</label><input id="lP" type="password" autocomplete="current-password"><div class="btns"><button class="btn" id="lB">Einloggen</button></div></div><p class="note">Dieser Bereich ist nur für die Admins der Crew.</p>';
     $('#lB').onclick=login;return;
@@ -222,7 +238,9 @@ function renderAdmin(){
   b.innerHTML=`<div class="card"><h3>Termin eintragen</h3>
 <label for="eT">Titel</label><input id="eT">
 <label for="eD">Datum</label><input id="eD" type="date">
+<div class="two"><div><label for="eS">Start</label><input id="eS" type="time"></div><div><label for="eE">Ende</label><input id="eE" type="time"></div></div>
 <label for="eP">Treffpunkt</label><input id="eP">
+<label for="eX">Beschreibung</label><textarea id="eX" rows="3" placeholder="z. B. Was ist mitzubringen? Wie lange? Für wen?"></textarea>
 <label for="eK">Art</label><select id="eK"><option>Ausfahrt</option><option>Trailbau</option><option>Sonstiges</option></select>
 <div class="btns"><button class="btn" id="eB">Termin speichern</button></div></div>
 <div class="card"><h3>Spot eintragen</h3>
@@ -231,35 +249,61 @@ function renderAdmin(){
 <label for="sL">Schwierigkeit</label><select id="sL"><option>leicht</option><option>mittel</option><option>schwer</option></select>
 <label for="sK">Komoot-Link der Tour</label><input id="sK" type="url" placeholder="https://www.komoot.com/tour/...">
 <label for="sV">Video-Link (optional)</label><input id="sV" type="url" placeholder="https://www.youtube.com/watch?v=...">
-<label>Position: auf die Karte tippen</label><div id="pm" class="map" style="height:260px"></div>
+<label for="sM">Art</label><select id="sM"><option value="p">Punkt (ein Spot)</option><option value="r">Strecke (Punkte nacheinander antippen)</option></select>
+<label>Position oder Strecke auf der Karte</label><div id="pm" class="map" style="height:260px"></div>
 <p class="note" id="pc">Noch keine Position gewählt.</p>
+<div class="btns"><button class="btn alt" id="rU">Letzten Punkt entfernen</button><button class="btn alt" id="rR">Zurücksetzen</button></div>
+<label for="sG">Oder GPX-Datei laden (optional)</label><input id="sG" type="file" accept=".gpx">
 <div class="btns"><button class="btn" id="sB">Spot speichern</button></div></div>
 <div class="btns"><button class="btn alt" id="lo">Ausloggen</button></div>`;
   pm=mkMap('pm');
+  const draw=()=>{
+    if(rline){pm.removeLayer(rline);rline=null}
+    if(rt.length>1)rline=L.polyline(rt,{color:'#fff',weight:4}).addTo(pm);
+    if(pos){if(pmark)pmark.setLatLng(pos);else pmark=L.circleMarker(pos,{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(pm)}
+    else if(pmark){pm.removeLayer(pmark);pmark=null}
+    $('#pc').textContent=rt.length>1?'Strecke mit '+rt.length+' Punkten, '+rKm(rt).toFixed(1).replace('.',',')+' km':pos?'Position gewählt: '+pos.lat.toFixed(5)+', '+pos.lng.toFixed(5):'Noch keine Position gewählt.';
+  };
   pm.on('click',e=>{
-    pos=e.latlng;if(pmark)pmark.setLatLng(pos);else pmark=L.circleMarker(pos,{radius:10,color:'#000',weight:3,fillColor:'#fff',fillOpacity:1}).addTo(pm);
-    $('#pc').textContent='Position gewählt: '+pos.lat.toFixed(5)+', '+pos.lng.toFixed(5);
+    if($('#sM').value==='r'){rt.push([+e.latlng.lat.toFixed(5),+e.latlng.lng.toFixed(5)]);pos=L.latLng(rt[0][0],rt[0][1])}
+    else{rt=[];pos=e.latlng}
+    draw();
   });
+  $('#rU').onclick=()=>{rt.pop();pos=rt.length?L.latLng(rt[0][0],rt[0][1]):null;draw()};
+  $('#rR').onclick=()=>{rt=[];pos=null;draw()};
+  $('#sG').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{
+      const x=new DOMParser().parseFromString(await f.text(),'application/xml');
+      let q=[...x.querySelectorAll('trkpt,rtept')].map(n=>[+n.getAttribute('lat'),+n.getAttribute('lon')]).filter(a=>isFinite(a[0])&&isFinite(a[1]));
+      if(q.length<2)throw 0;
+      const st=Math.ceil(q.length/400);
+      rt=q.filter((a,i)=>i%st===0||i===q.length-1).map(a=>[+a[0].toFixed(5),+a[1].toFixed(5)]);
+      pos=L.latLng(rt[0][0],rt[0][1]);$('#sM').value='r';draw();pm.fitBounds(L.latLngBounds(rt).pad(.2));
+    }catch(err){toast('GPX-Datei konnte nicht gelesen werden')}
+  };
   $('#eB').onclick=async()=>{
     const t=$('#eT').value.trim(),d=$('#eD').value;
     if(!t||!d){toast('Bitte Titel und Datum ausfüllen');return}
-    try{await api('events','POST',{title:t,event_date:d,place:$('#eP').value.trim()||null,kind:$('#eK').value});
-      toast('Termin gespeichert');['#eT','#eD','#eP'].forEach(s=>$(s).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
+    const s=$('#eS').value,n=$('#eE').value;
+    if(s&&n&&n<=s){toast('Das Ende muss nach dem Start liegen');return}
+    try{await api('events','POST',{title:t,event_date:d,start_time:s||null,end_time:n||null,place:$('#eP').value.trim()||null,description:$('#eX').value.trim()||null,kind:$('#eK').value});
+      toast('Termin gespeichert');['#eT','#eD','#eS','#eE','#eP','#eX'].forEach(x=>$(x).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
   };
   $('#sB').onclick=async()=>{
     const n=$('#sN').value.trim();
     if(!n||!pos){toast('Bitte Name und Position wählen');return}
     const k=$('#sK').value.trim(),v=$('#sV').value.trim();
     if((k&&!safe(k))||(v&&!safe(v))){toast('Links müssen mit https:// beginnen');return}
-    try{await api('spots','POST',{name:n,description:$('#sD').value.trim()||null,lat:pos.lat,lng:pos.lng,difficulty:$('#sL').value,komoot_url:k||null,video_url:v||null});
-      toast('Spot gespeichert');load()}catch(e){toast('Speichern fehlgeschlagen')}
+    try{await api('spots','POST',{name:n,description:$('#sD').value.trim()||null,lat:pos.lat,lng:pos.lng,route:rt.length>1?rt:null,difficulty:$('#sL').value,komoot_url:k||null,video_url:v||null});
+      toast('Spot gespeichert');rt=[];pos=null;draw();['#sN','#sD','#sK','#sV'].forEach(x=>$(x).value='');load()}catch(e){toast('Speichern fehlgeschlagen')}
   };
   $('#lo').onclick=()=>{setSess(null);toast('Ausgeloggt')};
 }
 
 async function load(){
   try{
-    events=await api('events?select=*&order=event_date.asc&event_date=gte.'+new Date().toLocaleDateString('sv-SE'));
+    events=await api('events?select=*&order=event_date.asc,start_time.asc&event_date=gte.'+new Date().toLocaleDateString('sv-SE'));
     spots=await api('spots?select=*&order=name.asc');
   }catch(e){toast('Daten konnten nicht geladen werden')}
   renderEvents();renderSpots();
